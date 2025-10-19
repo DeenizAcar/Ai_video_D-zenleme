@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1022978771153",
+    "project_id": "ai-video-d-zenleme",
+    "storage_bucket": "ai-video-d-zenleme.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1022978771153:android:c0a95be0c66b868bfa5df0",
+        "android_client_info": {
+          "package_name": "com.example.ai_video_yapma"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDAUtr9oKSVe0QoT57yRdwxFzi6UjDwQsQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
