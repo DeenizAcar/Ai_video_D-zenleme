@@ -1,49 +1,54 @@
 // Gerekli paketleri içe aktarıyoruz
 import 'package:flutter/material.dart';
-// Firebase'i çalıştırmak için 'firebase_core' paketini ekledik
 import 'package:firebase_core/firebase_core.dart';
-// flutterfire configure'un oluşturduğu anahtar dosyasını ekledik
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart'; 
+import 'package:image_picker/image_picker.dart'; 
+import 'dart:io'; 
+import 'dart:convert'; 
+import 'dart:typed_data'; 
 import 'firebase_options.dart';
+import 'auth_screen.dart';
+
 
 // main fonksiyonumuzu 'async' olarak güncelledik
-// çünkü Firebase'in başlamasını beklememiz gerekiyor
 Future<void> main() async {
-  // Flutter uygulamasının donanımla (native kod) konuşmaya
-  // hazır olduğundan emin oluyoruz.
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Firebase'i başlatıyoruz!
-  // 'firebase_options.dart' dosyasındaki anahtarları kullanacak.
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  // Firebase başladiktan sonra uygulamamızı çalıştırıyoruz
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
-// Buradan sonrası, bildiğimiz standart sayaç uygulaması.
-// Henüz hiçbir şeyini değiştirmedik.
-
+// Uygulamanın ana widget'ı. Giriş durumunu kontrol eder.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'AI Video Düzenleme',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          }
+          if (snapshot.hasData && snapshot.data != null) {
+            return const MyHomePage(title: 'AI Video Oluşturucu');
+          } else {
+            return const AuthScreen();
+          }
+        },
+      ),
     );
   }
 }
 
+// Ana sayfa widget'ımız (fotoğraf yükleme ekranı)
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
-
   final String title;
 
   @override
@@ -51,39 +56,146 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  bool _isLoading = false; 
+  // XFile? _selectedImage; 
+  final TextEditingController _promptController = TextEditingController();
+  // final ImagePicker _picker = ImagePicker(); 
 
-  void _incrementCounter() {
-    setState(() {
-      _counter++;
-    });
+  Future<void> _signOut() async {
+    await FirebaseAuth.instance.signOut();
   }
+
+  // Video Oluşturma Fonksiyonu (Yapay Zeka Çağrısı)
+  Future<void> _generateVideo() async {
+    final user = FirebaseAuth.instance.currentUser;
+    // SADECE prompt kontrolü yapılıyor
+    if (user == null || _promptController.text.trim().isEmpty) {
+      return; 
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    // callable değişkenini burada tanımlıyoruz
+    final callable = FirebaseFunctions.instance.httpsCallable('generateVideoFromImage');
+
+    try {
+      // KESİN TEST AMAÇLI GÖMÜLÜ BASE64 KODU
+      const String base64Image = 
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='; 
+
+      final Map<String, dynamic> requestData = {
+        'image': base64Image, // <-- KESİN DOLU GÖRSEL VERİSİ
+        'prompt': _promptController.text.trim(),
+      };
+
+      // ignore: avoid_print
+      print('Firebase Cloud Function çağrılıyor: generateVideoFromImage...');
+
+      // Fonksiyonu çağır ve sonucu bekle
+      final HttpsCallableResult result = await callable.call(requestData);
+
+      // ignore: avoid_print
+      print('Fonksiyon Çağrısı Başarılı!');
+      // ignore: avoid_print
+      print('Sunucudan Yanıt: ${result.data}');
+      
+      // NOT: Sunucudan yanıt 200 OK geldiğinde, bu satırların çalışması gerekir.
+      // Artık invalid-argument hatası almamalıyız.
+
+    } on FirebaseFunctionsException catch (e) {
+      // ignore: avoid_print
+      print('Cloud Function Hatası Oluştu:');
+      // ignore: avoid_print
+      print('Kod: ${e.code}');
+      // ignore: avoid_print
+      print('Mesaj: ${e.message}');
+    } catch (e) {
+      // ignore: avoid_print
+      print('Bilinmeyen Hata: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+    
+  @override
+  void dispose() {
+    _promptController.dispose();
+    super.dispose();
+  }
+
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
+    // Fotoğraf seçme mantığı kaldırıldığı için sadece prompt kontrolü yapıyoruz
+    final bool isButtonDisabled = _isLoading || _promptController.text.trim().isEmpty;
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Çıkış Yap',
+            onPressed: _signOut,
+          ),
+        ],
       ),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              // Hoş geldin mesajı
+              if (user != null)
+                Text('Hoş geldin, ${user.email ?? 'Kullanıcı'}!'),
+              const SizedBox(height: 30),
+
+              // FOTOĞRAF ALANI KALDIRILDIĞI İÇİN BOŞLUK BIRAKIYORUZ
+              const SizedBox(height: 150),
+              
+              // PROMPT ALANI
+              TextField(
+                controller: _promptController,
+                maxLines: 3,
+                enabled: !_isLoading, 
+                decoration: const InputDecoration(
+                  labelText: 'Video için Prompt (İstek) Girin',
+                  hintText: 'Örneğin: "Bu fotoğrafı hareketli, çizgi film stilinde bir videoya dönüştür."',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (value) => setState(() {}), 
+              ),
+
+              const SizedBox(height: 20),
+
+              // VİDEO OLUŞTUR BUTONU
+              ElevatedButton.icon(
+                // Sadece prompt doluysa butonu etkinleştiriyoruz
+                onPressed: isButtonDisabled ? null : _generateVideo, 
+                icon: _isLoading 
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Icon(Icons.movie_creation),
+                label: Text(_isLoading ? 'Oluşturuluyor...' : 'AI Video Oluştur'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                  textStyle: const TextStyle(fontSize: 16),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
       ),
     );
   }
